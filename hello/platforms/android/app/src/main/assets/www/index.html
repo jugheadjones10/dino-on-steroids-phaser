@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="format-detection" content="telephone=no">
+    <meta name="msapplication-tap-highlight" content="no">
+    <meta name="viewport" content="initial-scale=1, width=device-width, viewport-fit=cover">
+    <link rel="stylesheet" type="text/css" href="css/index.css">
+    <script src="//cdn.jsdelivr.net/npm/phaser@3.11.0/dist/phaser.js"></script>
+    <!-- Why doesn't the above one line work? Why do I have to insert it into the body instead? -->
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+    <title>Hello World</title>
+</head>
+
+<body>
+    <script type="text/javascript" src="cordova.js"></script>
+    <script type="text/javascript" src="js/phaser.js"></script>
+    <script type="text/javascript" src="js/index.js"></script>
+    <script>
+    var config = {
+            parent: "game",
+            type: Phaser.WEBGL,
+            width: 800,
+            height: 400,
+            physics: {
+                default: "arcade",
+                arcade: {
+                    debug: false
+                }
+            },
+            scene: {
+                preload,
+                create,
+                update
+            },
+            scale: {
+                mode: Phaser.Scale.RESIZE,
+                autoCenter: Phaser.Scale.CENTER_BOTH
+            },
+            backgroundColor: 0x000000,
+        }
+
+        var gameConfigs = {
+            dinoStartX: 100,
+            dinoStartY: 150,
+            dinoCrouchY: 230,
+            groundStartY: 230,
+            intervalMax: 10,
+            intervalMin: 3,
+            dinoJumpVelocity: -800,
+            groundScrollSpeed: 12,
+
+            dinoNormalGravity: 2000,
+            dinoCrouchGravity: 10000,
+
+            scoreUpdateInterval: 300,
+
+            obstaclesVelocity: -700,
+
+            raptorHeightMax: 20,
+            raptorHeightMin: 220,
+
+            audioVolumeRatio: 0.3
+        }
+
+        var game = new Phaser.Game(config)
+        var score = 0
+        var scoreText
+        var gameState = "beforeStart"
+        var gameAudio = "firstStart"
+
+        var helperRun = true
+        var helperCrouch = true
+        //var raptorHelper = true
+
+        var obsCreateTime = 0
+        var platformFake
+
+        var obsArray = [
+            "raptorUp",
+            "singleCacti",
+            "doubleCacti",
+            "rowCacti"
+        ]
+
+        var obsHeights = [
+            200,
+            220,
+            220,
+            225
+        ]
+
+
+        function preload() {
+            
+            var progressBar = this.add.graphics()
+            //var progressBox = this.add.graphics()
+            //progressBox.fillStyle(0x222222, 0.8)
+            //progressBox.fillRect(game.canvas.width/2 - game.canvas.width/4, game.canvas.height/2 - 50/2, game.canvas.width/2, 50)
+            
+            this.load.on('progress', function (value) {
+                //console.log(value)
+                progressBar.clear()
+                progressBar.fillStyle(0xff0000, 1)
+                progressBar.fillRect(game.canvas.width/2 - game.canvas.width/4 + 10, game.canvas.height/2 - 50/2 + 10, (game.canvas.width/2 - 20)* value, 30)
+            })
+
+            this.load.on('complete', function () {
+                //console.log('complete')
+                progressBar.destroy()
+                //progressBox.destroy()
+            })
+
+            this.load.image('dino', 'img/dinosaur_red.png')
+            this.load.image('ground', 'img/ground.png')
+            this.load.image("doubleCacti", "img/double-cacti.png")
+            this.load.image("singleCacti", "img/single-cactus.png")
+            this.load.image("rowCacti", "img/row-cacti.png")
+            this.load.image("raptorUp", "img/raptor-up-red.png")
+            this.load.image("raptorDown", "img/raptor-down-red.png")
+            this.load.image("playAgain", "img/play-again.png")
+
+            this.load.image("funnyText", "img/funny-text-dino.png")
+
+            this.load.audio("themeSong", ["audio/DinoThemeEdited.mp4a", "audio/DinoThemeEdited.mp3", "audio/DinoThemeEdited.ogg"])
+            this.load.audio("dinoJumpAudio", ["audio/DinoJumpAudio.m4a", "audio/DinoJumpAudio.mp3", "audio/DinoJumpAudio.ogg"])
+            this.load.audio("dinoDieAudio", ["audio/DinoDeadSound.m4a", "audio/DinoDeadSound.mp3", "audio/DinoDeadSound.ogg"])
+
+            this.load.spritesheet("dinoRun",
+                "img/dino-red-run.png",
+                { frameWidth: 44, frameHeight: 47 }
+            )
+
+            this.load.image("0", "img/0.png")
+            this.load.image("1", "img/1.png")
+            this.load.image("2", "img/2.png")
+            this.load.image("3", "img/3.png")
+            this.load.image("4", "img/4.png")
+            this.load.image("5", "img/5.png")
+            this.load.image("6", "img/6.png")
+            this.load.image("7", "img/7.png")
+            this.load.image("8", "img/8.png")
+            this.load.image("9", "img/9.png")
+
+            this.load.image("G", "img/G.png")
+            this.load.image("A", "img/A.png")
+            this.load.image("M", "img/M.png")
+            this.load.image("E", "img/E.png")
+            this.load.image("O", "img/O.png")
+            this.load.image("V", "img/V.png")
+            this.load.image("R", "img/R.png")
+        }
+
+        function create() {
+            //tickerSeer = this.add.text(20, 30, "ObsTicker : ")
+
+            this.sound.add("dinoJumpAudio")
+            this.sound.add("dinoDieAudio")
+            this.sound.add("themeSong")
+
+            if(gameAudio == "firstStart"){
+                this.sound.play("themeSong", {
+                    loop: true,
+                    volume: 1
+                })
+
+                funnyText = this.add.image(game.canvas.width/2 - 30, game.canvas.height/2 - 40, "funnyText")
+                //funnyText.setDisplaySize(400, 255)
+            }
+
+            // tapListener = this.add.image(game.canvas.width, game.canvas.height, "0")
+            // tapListener.visible = false
+            // tapListener.active = false
+            // tapListener.setInteractive()
+            // tapListener.on("pointerdown", function(){
+            //     gameState = "beforeStart"
+            //     score = 0
+            //     obsCreateTime = 0
+            //     helperRun = true
+            //     helperCrouch = true
+
+            //     this.scene.restart()
+            // })
+
+            platformFake = this.add.image(game.canvas.width/2, gameConfigs.groundStartY, "ground")
+            platformReal = this.physics.add.sprite(game.canvas.width/2, gameConfigs.groundStartY + 35, "ground")
+            platformReal.setImmovable(true)
+            platformReal.visible = false
+
+            obstacles = this.physics.add.group()
+
+            replayButton = this.add.image(game.canvas.width/2, game.canvas.height/2, "playAgain")
+            replayButton.setVisible(false)
+
+            
+
+            // this.input.on("pointerdown", function(){
+            //     if(gameState == "gameOver"){
+            //         gameState = "beforeStart"
+            //         score = 0
+            //         obsCreateTime = 0
+            //         helperRun = true
+            //         helperCrouch = true
+
+            //         this.scene.restart()
+            //     }
+            // })
+
+            // replayButton.setInteractive()
+
+            // replayButton.on("pointerdown", function () {
+            //     gameState = "beforeStart"
+            //     score = 0
+            //     obsCreateTime = 0
+            //     helperRun = true
+            //     //helperCrouch = true
+
+            //     this.scene.restart()
+            // })
+
+            gameSign = this.add.group()
+            for (var i = 0; i < 4; i++) {
+                gameSign.create(game.canvas.width/2 - 80 + i * 20, game.canvas.height/2 - 40, "GAME"[i])
+            }
+            gameSign.toggleVisible()
+
+            overSign = this.add.group()
+            for (var i = 0; i < 4; i++) {
+                overSign.create(game.canvas.width/2 + 20 + i * 20, game.canvas.height/2 - 40, "OVER"[i])
+            }
+            overSign.toggleVisible()
+
+            scoreKeeper = this.add.group({
+                key: '0',
+                repeat: 4,
+                setXY: { x: game.canvas.width - 150, y: 50, stepX: 20 }
+            })
+
+            player = this.physics.add.sprite(gameConfigs.dinoStartX, gameConfigs.dinoStartY, "dino")
+            player.body.setGravityY(gameConfigs.dinoNormalGravity)
+            player.setCollideWorldBounds(true)
+
+            this.physics.add.overlap(player, obstacles, hitCollider, null, this)
+            this.physics.add.collider(player, platformReal)
+
+
+            /////////Animations///////////
+            this.dinoRunning = this.anims.create({
+                key: "running",
+                frames: this.anims.generateFrameNumbers("dinoRun", { start: 0, end: 1 }),
+                frameRate: 10,
+                repeat: -1
+            })
+
+            this.dinoNeutral = this.anims.create({
+                key: 'neutral',
+                frames: [{ key: 'dino', frame: 0 }],
+                frameRate: 10
+            })
+
+            this.dinoCrouching = this.anims.create({
+                key: 'crouching',
+                frames: this.anims.generateFrameNumbers('dinoCrouch', { start: 0, end: 1 }),
+                frameRate: 10,
+                repeat: -1
+            })
+
+            /////////Animations///////////
+
+            this.input.on("pointerdown", function(pointer){
+                if(pointer.x > game.canvas.width/2 
+                && gameState == "inGame" 
+                &&  !player.body.touching.down){
+                    player.body.setGravityY(gameConfigs.dinoCrouchGravity)
+                }
+            })
+        }
+
+        function hitCollider(){
+            gameState = "gameOver"
+            this.sound.play("dinoDieAudio", {
+                volume: gameConfigs.audioVolumeRatio
+            })
+
+            gameSign.toggleVisible()
+            overSign.toggleVisible()
+            replayButton.setVisible(true)
+            gameAudio = "null"
+
+            clearInterval(this.scoreInterval)
+            clearInterval(this.raptorInterval)
+            this.physics.pause()
+            // //this.dinoCrouching.destroy()
+            this.dinoNeutral.pause()
+            this.dinoRunning.pause()
+            player.setTint(0xff0000)
+
+        }
+
+
+        function updateScore() {
+            score += 1
+            var stringScore = score.toString()
+            var newChildrenArr = []
+
+            for (var i = 0; i < 5; i++) {
+                if (i >= 5 - stringScore.length) {
+                    newChildrenArr.push({
+                        key: stringScore[i - (5 - stringScore.length)],
+                        setXY: { x: game.canvas.width - 150 + 20 * i, y: 50 }
+                    })
+                } else {
+                    newChildrenArr.push({
+                        key: "0",
+                        setXY: { x: game.canvas.width - 150 + 20 * i, y: 50 }
+                    })
+                }
+            }
+            scoreKeeper.clear(true, true)
+            scoreKeeper.createMultiple(newChildrenArr)
+        }
+
+
+        function update(timeTick, delta) {
+            if(this.input.activePointer.justDown && gameState == "gameOver"){
+                gameState = "beforeStart"
+                score = 0
+                obsCreateTime = 0
+                helperRun = true
+                this.dinoNeutral.destroy()
+                this.dinoRunning.destroy()
+                //helperCrouch = true
+
+                this.scene.restart()
+            }
+
+            if(gameState == "inGame"){
+                if(player.body.touching.down){
+                    // if(this.input.activePointer.isDown && this.input.activePointer.x > game.canvas.width/2 && helperCrouch){
+                    //     player.anims.play('running')
+                    //     helperCrouch = false
+                    //     helperRun = true
+                    // }else 
+                    if(
+                        //!this.input.activePointer.active && 
+                        helperRun){
+                        player.anims.play('running')
+                        helperRun = false
+                        //helperCrouch = true
+                    }
+                    if (player.body.gravity != gameConfigs.dinoNormalGravity) {
+                        player.body.setGravityY(gameConfigs.dinoNormalGravity)
+                    }
+                }else{
+                    player.anims.play('neutral')
+                }
+            }
+
+            if (this.input.activePointer.isDown && this.input.activePointer.x < game.canvas.width/2 && player.body.touching.down) {
+                if (gameState == "beforeStart") {
+                    if(gameAudio == "firstStart"){
+                        obsCreateTime =  Math.floor(timeTick / 100 + 30)
+                    }else{
+                        obsCreateTime = Math.floor(timeTick / 100 + (Math.random() * (gameConfigs.intervalMax - gameConfigs.intervalMin) + gameConfigs.intervalMin))
+                    }
+
+
+                    
+                    this.scoreInterval = setInterval(updateScore, gameConfigs.scoreUpdateInterval)
+                    gameState = "inGame"
+                }
+                if(gameAudio == "firstStart"){
+                    setTimeout(function(){
+                        funnyText.visible = false
+                    }, 3000)
+                }
+        
+                // player.setVelocityY(gameConfigs.dinoJumpVelocity)
+             
+                if(gameState == "inGame"){
+                    this.sound.play("dinoJumpAudio",{
+                        volume: gameConfigs.audioVolumeRatio
+                    })
+                    player.setVelocityY(gameConfigs.dinoJumpVelocity)
+                }
+                helperRun = true
+                //helperCrouch = true
+            }
+
+
+            if (gameState == "inGame") {
+                platformFake.x -= gameConfigs.groundScrollSpeed
+            }
+            if (platformFake.x <= config.width/4) {
+                platformFake.x = config.width/2 +  config.width/4
+            }
+
+            //tickerSeer.setText(Math.floor(timeTick/100).toString())
+
+            if (Math.floor(timeTick/100) == obsCreateTime) {
+                var randInt = Phaser.Math.Between(0, 3)
+                if (randInt == 0) {
+                    obsHeights[0] = Phaser.Math.Between(gameConfigs.raptorHeightMax, gameConfigs.raptorHeightMin)
+                }
+                var obstacle = obstacles.create(config.width + 50, obsHeights[randInt], obsArray[randInt])
+                obstacle.setVelocity(gameConfigs.obstaclesVelocity, 0)
+                if (randInt == 0) {
+                    this.raptorInterval = setInterval(function () {
+                        if (obstacle.texture.key == "raptorUp") {
+                            obstacle.setTexture("raptorDown")
+                        } else {
+                            obstacle.setTexture("raptorUp")
+                        }
+                    }.bind(this), 500)
+                }
+                //The reason the raptor animation wasn't working all this time was that the frame width and height specified were
+                //too big - the raptorUp frame had height 30 while raptorDown had height 34. So when I specified 36 as the frame height,
+                //I'm assuming the system was fed a bit of empty space, and malfunctioned.
+
+                //Nope. Raptor still malfunctions. Used an extremely roundabout way - but it works
+
+                obsCreateTime = Math.floor(timeTick / 100 + (Math.random() * (gameConfigs.intervalMax - gameConfigs.intervalMin) + gameConfigs.intervalMin))
+            }
+
+            obstacles.getChildren().forEach(function (child) {
+                if (child.x < -10) {
+                    obstacles.remove(child, true, true)
+                }
+            })
+        }
+
+    </script>
+</body>
+
+</html>
